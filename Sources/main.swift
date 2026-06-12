@@ -184,10 +184,7 @@ func openInBrave(url: URL, config: Config) {
 // MARK: - App delegate
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    var config = Config(bravePath: nil, rules: [], fallbackProfile: nil)
-
     func applicationWillFinishLaunching(_ notification: Notification) {
-        config = loadConfig()
         NSAppleEventManager.shared().setEventHandler(
             self,
             andSelector: #selector(handleURLEvent(_:withReply:)),
@@ -202,7 +199,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             log("Received URL event without usable URL")
             return
         }
-        openInBrave(url: url, config: config)
+        // Reload config on every event so edits to rules.json take effect
+        // immediately, with no app restart (effectively a hot reload).
+        openInBrave(url: url, config: loadConfig())
     }
 }
 

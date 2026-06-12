@@ -104,6 +104,9 @@ ln -s ~/dotfiles/profilelauncher/rules.json ~/.config/profilelauncher/rules.json
   上から順に評価し、最初に一致したものを採用。
 - `rules[].profile`: ディレクトリ名または表示名。
 
+設定は **URL を開くたびに読み直される**ため、`rules.json` を編集すれば次のリンクから即反映されます
+（アプリの再起動・再ビルドは不要）。
+
 ## テスト
 
 ```bash
