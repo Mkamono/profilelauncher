@@ -90,17 +90,26 @@ func resolveProfileDirectory(_ value: String) -> String {
 
 // MARK: - Become the default browser
 
+// Read the current default handler's bundle id via the non-deprecated
+// NSWorkspace API (LSCopyDefaultHandlerForURLScheme is deprecated).
+func currentDefaultBundleID(forScheme scheme: String) -> String? {
+    guard let url = URL(string: "\(scheme)://example.com"),
+          let appURL = NSWorkspace.shared.urlForApplication(toOpen: url) else { return nil }
+    return Bundle(url: appURL)?.bundleIdentifier
+}
+
 func setAsDefaultBrowser() {
-    let id = (Bundle.main.bundleIdentifier ?? "com.local.profilelauncher") as CFString
+    let idString = Bundle.main.bundleIdentifier ?? "com.local.profilelauncher"
+    let id = idString as CFString
     // macOS shows a confirmation dialog the first time a new app requests this.
     let httpResult = LSSetDefaultHandlerForURLScheme("http" as CFString, id)
     let httpsResult = LSSetDefaultHandlerForURLScheme("https" as CFString, id)
-    let http = LSCopyDefaultHandlerForURLScheme("http" as CFString)?.takeRetainedValue() as String?
-    let https = LSCopyDefaultHandlerForURLScheme("https" as CFString)?.takeRetainedValue() as String?
-    print("Requested default browser = \(id)")
+    let http = currentDefaultBundleID(forScheme: "http")
+    let https = currentDefaultBundleID(forScheme: "https")
+    print("Requested default browser = \(idString)")
     print("  http  set=\(httpResult) now=\(http ?? "nil")")
     print("  https set=\(httpsResult) now=\(https ?? "nil")")
-    if http == (id as String) && https == (id as String) {
+    if http == idString && https == idString {
         print("OK: ProfileLauncher is now the default web browser.")
     } else {
         print("If unchanged, confirm the macOS dialog, or set it in")
