@@ -148,20 +148,37 @@ Brave の前面プロファイルで開きます（その旨はログに残り�
   "bravePath": "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
   "fallbackProfile": null,
   "rules": [
-    { "match": "github.com",     "profile": "main" },
-    { "match": "*.github.com",   "profile": "main" },
-    { "match": "mail.google.com","profile": "sub"  },
-    { "match": "*.rikunabi.com", "profile": "就活" },
-    { "match": "*mynavi*",       "profile": "就活" }
+    { "match": "github.com/myorg/",    "profile": "main" },
+    { "match": "github.com",           "profile": "main" },
+    { "match": "mail.google.com",      "profile": "sub"  },
+    { "match": "project=my-work-proj", "profile": "sub"  },
+    { "match": "project=my-job-proj",  "profile": "就活" },
+    { "match": "mynavi",               "profile": "就活" }
   ]
 }
 ```
 
 - `bravePath`: 省略可。既定は `/Applications/Brave Browser.app/...`。
 - `fallbackProfile`: どのルールにも一致しなかった時のプロファイル。`null` なら Brave 任せ。
-- `rules[].match`: ホスト名に対するグロブ（`*` のみ特殊）。`/` を含む場合は URL 全体に対して照合。
-  上から順に評価し、最初に一致したものを採用。
+- `rules[].match`: **フル URL に対する部分一致**（大文字小文字を区別しない）。`*` のみワイルドカード、
+  それ以外はそのままの文字列。位置・順序は不問なので、これ一つで全部書けます:
+  - ドメイン: `github.com`（サブドメインやパス中に現れても一致）
+  - サブドメインだけ: `*.github.com`
+  - パス前方一致: `github.com/myorg/`
+  - クエリ（例: Google Cloud の `?project=...`）: `project=my-proj`（順序に関係なく一致）
+
+  ルールは上から評価し、最初に一致したものを採用。**より限定的なルールを上に**置いてください。
 - `rules[].profile`: ディレクトリ名または表示名。
+
+> 部分一致なので `github.com` は `github.com` を含む別ホスト（例 `evil-github.com`）にも一致し得ます。
+> 厳密にしたいときは `//github.com/` や `.github.com` のように区切り文字を含めて書きます。
+
+ルールがどう効くかは**ブラウザを開かずに**確認できます:
+
+```bash
+/Applications/ProfileLauncher.app/Contents/MacOS/ProfileLauncher --test 'https://console.cloud.google.com/home?project=my-work-proj'
+#  -> profile "sub" (directory Profile 1)
+```
 
 設定は **URL を開くたびに読み直される**ため、`rules.json` を編集すれば次のリンクから即反映されます
 （アプリの再起動・再ビルドは不要）。

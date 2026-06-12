@@ -5,7 +5,13 @@ import Foundation
 // MARK: - Config models
 
 struct Rule: Decodable {
-    let match: String        // host glob, e.g. "github.com" or "*.work.com" or "*example*"
+    // Matched as a SUBSTRING of the full URL (case-insensitive). `*` is the only
+    // wildcard. Position/order independent, so it covers every case:
+    //   "github.com"           host or anywhere the text appears
+    //   "*.github.com"         subdomains
+    //   "github.com/myorg/"    a path prefix
+    //   "project=my-proj"      a query parameter (e.g. Google Cloud), any order
+    let match: String
     let profile: String      // Brave profile: directory ("Profile 1") or display name ("sub")
 }
 
@@ -318,10 +324,10 @@ func checkConfig() {
     var problems = 0
     for (i, rule) in config.rules.enumerated() {
         if let dir = resolveProfileDirectory(rule.profile) {
-            print("  [\(i)] ok  \(pad(rule.match, 22)) -> \(rule.profile)  (uses \(dir))")
+            print("  [\(i)] ok  \(pad(rule.match, 28)) -> \(rule.profile)  (uses \(dir))")
         } else {
             problems += 1
-            print("  [\(i)] ERR \(pad(rule.match, 22)) -> \(rule.profile)  (NO SUCH PROFILE here)")
+            print("  [\(i)] ERR \(pad(rule.match, 28)) -> \(rule.profile)  (NO SUCH PROFILE here)")
         }
     }
 
@@ -347,26 +353,26 @@ func checkConfig() {
 
 // MARK: - Matching
 
-func glob(_ pattern: String, matches text: String) -> Bool {
-    // Convert a simple glob (only `*` is special) to a regex anchored fully.
+// True if `pattern` occurs anywhere in `text`. `*` is the only wildcard;
+// everything else is literal. Unanchored (substring) and case-insensitive.
+func globContains(_ pattern: String, in text: String) -> Bool {
     let escaped = NSRegularExpression.escapedPattern(for: pattern)
         .replacingOccurrences(of: "\\*", with: ".*")
-    guard let re = try? NSRegularExpression(pattern: "^\(escaped)$", options: [.caseInsensitive]) else {
+    guard let re = try? NSRegularExpression(pattern: escaped, options: [.caseInsensitive]) else {
         return false
     }
     let range = NSRange(text.startIndex..<text.endIndex, in: text)
     return re.firstMatch(in: text, options: [], range: range) != nil
 }
 
+func ruleMatches(_ rule: Rule, url: URL) -> Bool {
+    globContains(rule.match, in: url.absoluteString)
+}
+
 func profileFor(url: URL, config: Config) -> String? {
-    let host = url.host ?? ""
-    for rule in config.rules {
-        // Match against host first; if the pattern contains a slash, match full URL.
-        let target = rule.match.contains("/") ? url.absoluteString : host
-        if glob(rule.match, matches: target) {
-            log("URL \(url.absoluteString) matched rule '\(rule.match)' -> \(rule.profile)")
-            return rule.profile
-        }
+    for rule in config.rules where ruleMatches(rule, url: url) {
+        log("URL \(url.absoluteString) matched rule '\(rule.match)' -> \(rule.profile)")
+        return rule.profile
     }
     log("URL \(url.absoluteString) matched no rule; fallback=\(config.fallbackProfile ?? "none")")
     return config.fallbackProfile
@@ -438,6 +444,7 @@ func usage() {
       ProfileLauncher --config-path   print the config file the app actually reads
       ProfileLauncher --list-profiles list this machine's Brave profiles
       ProfileLauncher --check         validate rules.json against this machine
+      ProfileLauncher --test <url>    show which profile a URL would use (no launch)
       ProfileLauncher --doctor        full health check (default browser, Brave, config, log)
       ProfileLauncher --set-default   register as the default web browser
       ProfileLauncher --help          show this help
@@ -458,6 +465,24 @@ case .none:
 
 case "--help", "-h":
     usage()
+    exit(0)
+
+case "--test", "--match":
+    // Dry-run: show which profile a URL would open in, without launching Brave.
+    guard cliArgs.count >= 2, let url = URL(string: cliArgs[1]), url.scheme != nil else {
+        FileHandle.standardError.write(Data("usage: ProfileLauncher --test <http-url>\n".utf8))
+        exit(2)
+    }
+    let cfg = loadConfig()
+    if let profileValue = profileFor(url: url, config: cfg) {
+        if let dir = resolveProfileDirectory(profileValue) {
+            print("\(url.absoluteString)\n  -> profile \"\(profileValue)\" (directory \(dir))")
+        } else {
+            print("\(url.absoluteString)\n  -> rule says \"\(profileValue)\" but NO SUCH PROFILE here; would open in Brave's front profile")
+        }
+    } else {
+        print("\(url.absoluteString)\n  -> no rule matched; opens in Brave's front profile")
+    }
     exit(0)
 
 case "--config-path":
