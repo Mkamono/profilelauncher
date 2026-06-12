@@ -24,15 +24,29 @@ let braveSupportDir = NSString(string: "~/Library/Application Support/BraveSoftw
 //   1. $PROFILELAUNCHER_CONFIG  (point this at a dotfiles / cloud-synced file)
 //   2. ~/.config/profilelauncher/rules.json  (XDG-style, easy to put under version control)
 //   3. ~/Library/Application Support/ProfileLauncher/rules.json  (default)
+let xdgConfigPath = NSString(string: "~/.config/profilelauncher/rules.json").expandingTildeInPath
+let appSupportConfigPath = NSString(string: "~/Library/Application Support/ProfileLauncher/rules.json").expandingTildeInPath
+
 let configPath: String = {
-    let fm = FileManager.default
     if let env = ProcessInfo.processInfo.environment["PROFILELAUNCHER_CONFIG"], !env.isEmpty {
         return NSString(string: env).expandingTildeInPath
     }
-    let xdg = NSString(string: "~/.config/profilelauncher/rules.json").expandingTildeInPath
-    if fm.fileExists(atPath: xdg) { return xdg }
-    return NSString(string: "~/Library/Application Support/ProfileLauncher/rules.json").expandingTildeInPath
+    if FileManager.default.fileExists(atPath: xdgConfigPath) { return xdgConfigPath }
+    return appSupportConfigPath
 }()
+
+// Other config files that exist but are being IGNORED because something
+// higher-priority won. Used to warn about "I edited the wrong file".
+func shadowedConfigPaths() -> [String] {
+    let fm = FileManager.default
+    var candidates: [String] = []
+    if ProcessInfo.processInfo.environment["PROFILELAUNCHER_CONFIG"] != nil {
+        candidates = [xdgConfigPath, appSupportConfigPath]
+    } else if configPath == xdgConfigPath {
+        candidates = [appSupportConfigPath]
+    }
+    return candidates.filter { $0 != configPath && fm.fileExists(atPath: $0) }
+}
 
 // MARK: - Logging (to ~/Library/Logs/ProfileLauncher.log)
 
@@ -197,6 +211,10 @@ func doctor() {
         print("         => rules.json is not valid JSON, so 0 rules load and nothing is routed.")
         print("         fix: correct the JSON (run --check after), or recopy rules.example.json")
     }
+    for ignored in shadowedConfigPaths() {
+        print("  [WARN] another config exists but is IGNORED: \(ignored)")
+        print("         (the active config above wins — edit the active one, not this)")
+    }
     let profiles = allProfiles()
     line(!profiles.isEmpty, "brave profiles",
          profiles.isEmpty ? "none found under \(braveSupportDir) — wrong support dir?"
@@ -264,6 +282,9 @@ func listProfiles() {
 // Validate rules.json against the profiles actually present on this machine.
 func checkConfig() {
     print("Config file: \(configPath)")
+    for ignored in shadowedConfigPaths() {
+        print("  WARNING: ignored config also present: \(ignored) (edit the active one above)")
+    }
     print("Brave dir:   \(braveSupportDir)\n")
 
     // Bail out loudly if the file is missing or malformed — otherwise the
@@ -408,40 +429,72 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 // MARK: - Entry point
 
-// CLI: `ProfileLauncher --list-profiles` shows available Brave profiles on this machine.
-if CommandLine.arguments.dropFirst().contains("--list-profiles") {
+func usage() {
+    print("""
+    ProfileLauncher — route URLs to Brave profiles.
+
+    Usage:
+      ProfileLauncher                 run as the default-browser agent (no args)
+      ProfileLauncher --list-profiles list this machine's Brave profiles
+      ProfileLauncher --check         validate rules.json against this machine
+      ProfileLauncher --doctor        full health check (default browser, Brave, config, log)
+      ProfileLauncher --set-default   register as the default web browser
+      ProfileLauncher --help          show this help
+      ProfileLauncher <url> [url...]  open the given http(s) URL(s) via the rules
+    """)
+}
+
+let cliArgs = Array(CommandLine.arguments.dropFirst())
+
+switch cliArgs.first {
+case .none:
+    // No arguments: run as the background default-browser agent.
+    let app = NSApplication.shared
+    let delegate = AppDelegate()
+    app.delegate = delegate
+    app.setActivationPolicy(.accessory) // no Dock icon, no menu bar
+    app.run()
+
+case "--help", "-h":
+    usage()
+    exit(0)
+
+case "--list-profiles":
     listProfiles()
     exit(0)
-}
 
-// CLI: `ProfileLauncher --doctor` runs a full health check (default browser, Brave, config, log).
-if CommandLine.arguments.dropFirst().contains("--doctor") {
+case "--doctor":
     doctor()
     exit(0)
-}
 
-// CLI: `ProfileLauncher --check` validates rules.json against this machine's profiles.
-if CommandLine.arguments.dropFirst().contains("--check") {
+case "--check":
     checkConfig()
     exit(0)
-}
 
-// CLI: `ProfileLauncher --set-default` registers itself as the default web browser.
-if CommandLine.arguments.dropFirst().contains("--set-default") {
+case "--set-default":
     setAsDefaultBrowser()
     exit(0)
-}
 
-// Support a CLI test mode: `ProfileLauncher https://example.com`
-let cliURLs = CommandLine.arguments.dropFirst().compactMap { URL(string: $0) }
-if !cliURLs.isEmpty {
+case .some(let first) where first.hasPrefix("-"):
+    // Unknown flag. Never fall through to "open as URL" — that used to launch
+    // Brave with the flag text and confused users on older builds.
+    FileHandle.standardError.write(Data("Unknown option: \(first)\n".utf8))
+    usage()
+    exit(2)
+
+default:
+    // Treat arguments as URLs, but only real web URLs (must have a scheme).
+    // This rejects things like "--check" on a version mismatch.
     let config = loadConfig()
-    for url in cliURLs { openInBrave(url: url, config: config) }
-    exit(0)
+    var opened = 0
+    for arg in cliArgs {
+        guard let url = URL(string: arg), let scheme = url.scheme,
+              ["http", "https"].contains(scheme.lowercased()) else {
+            FileHandle.standardError.write(Data("Ignoring non-URL argument: \(arg)\n".utf8))
+            continue
+        }
+        openInBrave(url: url, config: config)
+        opened += 1
+    }
+    exit(opened > 0 ? 0 : 2)
 }
-
-let app = NSApplication.shared
-let delegate = AppDelegate()
-app.delegate = delegate
-app.setActivationPolicy(.accessory) // no Dock icon, no menu bar
-app.run()
