@@ -1,0 +1,11 @@
+{
+  "bravePath": "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+  "fallbackProfile": null,
+  "rules": [
+    { "match": "github.com",        "profile": "main"  },
+    { "match": "*.github.com",      "profile": "main"  },
+    { "match": "mail.google.com",   "profile": "sub"   },
+    { "match": "*.rikunabi.com",    "profile": "就活"  },
+    { "match": "*mynavi*",          "profile": "就活"  }
+  ]
+}
