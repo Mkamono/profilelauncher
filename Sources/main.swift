@@ -1,4 +1,5 @@
 import AppKit
+import CoreServices
 import Foundation
 
 // MARK: - Config models
@@ -85,6 +86,26 @@ func resolveProfileDirectory(_ value: String) -> String {
     }
     log("Could not resolve profile '\(value)'; passing through to Brave")
     return value
+}
+
+// MARK: - Become the default browser
+
+func setAsDefaultBrowser() {
+    let id = (Bundle.main.bundleIdentifier ?? "com.local.profilelauncher") as CFString
+    // macOS shows a confirmation dialog the first time a new app requests this.
+    let httpResult = LSSetDefaultHandlerForURLScheme("http" as CFString, id)
+    let httpsResult = LSSetDefaultHandlerForURLScheme("https" as CFString, id)
+    let http = LSCopyDefaultHandlerForURLScheme("http" as CFString)?.takeRetainedValue() as String?
+    let https = LSCopyDefaultHandlerForURLScheme("https" as CFString)?.takeRetainedValue() as String?
+    print("Requested default browser = \(id)")
+    print("  http  set=\(httpResult) now=\(http ?? "nil")")
+    print("  https set=\(httpsResult) now=\(https ?? "nil")")
+    if http == (id as String) && https == (id as String) {
+        print("OK: ProfileLauncher is now the default web browser.")
+    } else {
+        print("If unchanged, confirm the macOS dialog, or set it in")
+        print("System Settings > Desktop & Dock > Default web browser.")
+    }
 }
 
 // MARK: - Profile listing (for setting up a new machine)
@@ -190,6 +211,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 // CLI: `ProfileLauncher --list-profiles` shows available Brave profiles on this machine.
 if CommandLine.arguments.dropFirst().contains("--list-profiles") {
     listProfiles()
+    exit(0)
+}
+
+// CLI: `ProfileLauncher --set-default` registers itself as the default web browser.
+if CommandLine.arguments.dropFirst().contains("--set-default") {
+    setAsDefaultBrowser()
     exit(0)
 }
 

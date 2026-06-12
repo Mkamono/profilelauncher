@@ -22,9 +22,16 @@ ProfileLauncher が rules.json を見て判定
 ./install.sh
 ```
 
-ビルド → `/Applications` へ配置 → LaunchServices 登録 → 一度起動、まで自動で行います。
-最後に表示される案内に従って、システム設定でデフォルトブラウザに指定してください
-（この一手だけは macOS がユーザー確認を求めるため手動です）。
+ビルド → `/Applications` へ配置 → LaunchServices 登録 → 一度起動 →
+デフォルトブラウザに設定要求、まで自動で行います。
+macOS の確認ダイアログが出たら「ProfileLauncher を使用」を選んでください。
+反映されない場合のみ、システム設定 > デスクトップとDock > デフォルトのWebブラウザ で手動選択します。
+
+デフォルトブラウザ設定だけをやり直したいとき:
+
+```bash
+/Applications/ProfileLauncher.app/Contents/MacOS/ProfileLauncher --set-default
+```
 
 アンインストール:
 

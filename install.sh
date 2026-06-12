@@ -35,12 +35,15 @@ echo "==> Launching once (registers as an http/https handler)"
 open "$DEST"
 sleep 1
 
+echo "==> Requesting to become the default web browser"
+echo "    (macOS may show a confirmation dialog — choose \"Use ProfileLauncher\")"
+"$DEST/Contents/MacOS/ProfileLauncher" --set-default || true
+
 CONFIG_DIR="$HOME/Library/Application Support/ProfileLauncher"
 echo ""
-echo "Installed. Remaining manual step (macOS requires user confirmation):"
-echo ""
-echo "  System Settings > Desktop & Dock > Default web browser"
-echo "    -> choose \"ProfileLauncher\""
+echo "Installed."
+echo "If the default browser did not change, set it manually in"
+echo "  System Settings > Desktop & Dock > Default web browser -> ProfileLauncher"
 echo ""
 echo "Config:  $CONFIG_DIR/rules.json"
 echo "         (or \$PROFILELAUNCHER_CONFIG, or ~/.config/profilelauncher/rules.json)"
