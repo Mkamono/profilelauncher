@@ -39,7 +39,8 @@ echo "==> Requesting to become the default web browser"
 echo "    (macOS may show a confirmation dialog — choose \"Use ProfileLauncher\")"
 "$DEST/Contents/MacOS/ProfileLauncher" --set-default || true
 
-CONFIG_DIR="$HOME/Library/Application Support/ProfileLauncher"
+# The single file the installed app actually reads (resolved by the binary).
+CONFIG_FILE="$("$DEST/Contents/MacOS/ProfileLauncher" --config-path)"
 
 echo ""
 echo "==> Validating rules.json against this machine's Brave profiles"
@@ -51,8 +52,7 @@ echo "Installed."
 echo "If the default browser did not change, set it manually in"
 echo "  System Settings > Desktop & Dock > Default web browser -> ProfileLauncher"
 echo ""
-echo "Config:  $CONFIG_DIR/rules.json"
-echo "         (or \$PROFILELAUNCHER_CONFIG, or ~/.config/profilelauncher/rules.json)"
+echo "Active config (edit THIS file): $CONFIG_FILE"
 echo "Re-validate any time:  \"$DEST/Contents/MacOS/ProfileLauncher\" --check"
 echo "Diagnose problems:     \"$DEST/Contents/MacOS/ProfileLauncher\" --doctor"
 echo "Logs:    ~/Library/Logs/ProfileLauncher.log"

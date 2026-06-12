@@ -59,8 +59,15 @@ macOS の確認ダイアログが出たら「ProfileLauncher を使用」を選�
 3. `~/Library/Application Support/ProfileLauncher/rules.json`（既定）
 
 > **注意**: 上位が存在すると下位は無視されます。例えば `~/.config/...` があると
-> Application Support 側を編集しても反映されません。**今どのファイルが使われているか**は
-> `--doctor` / `--check` の "config file" 行で確認でき、無視されている設定があれば警告が出ます。
+> Application Support 側を編集しても反映されません。`build.sh` の自動生成も install の
+> メッセージも、すべて「アプリが実際に読むファイル」に揃えてあります。今どのファイルが
+> 使われているかは次で確認できます（迷ったらこれ）:
+>
+> ```bash
+> /Applications/ProfileLauncher.app/Contents/MacOS/ProfileLauncher --config-path
+> ```
+>
+> `--doctor` / `--check` でも "config file" 行に表示され、無視されている設定があれば警告が出ます。
 
 dotfiles で共有する例:
 

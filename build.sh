@@ -26,13 +26,16 @@ echo "==> Ad-hoc code signing (required for LaunchServices / default browser)"
 codesign --force --deep --sign - "$APP"
 
 echo "==> Installing default rules if none exist"
-CONFIG_DIR="$HOME/Library/Application Support/ProfileLauncher"
-if [ ! -f "$CONFIG_DIR/rules.json" ]; then
-  mkdir -p "$CONFIG_DIR"
-  cp rules.example.json "$CONFIG_DIR/rules.json"
-  echo "    -> installed $CONFIG_DIR/rules.json (edit this to set your rules)"
+# Ask the binary which file it will actually read, so we seed THAT exact path
+# (env var / ~/.config / App Support) instead of guessing — avoids the
+# "edited the wrong file" confusion.
+CONFIG_FILE="$("$APP/Contents/MacOS/$BIN_NAME" --config-path)"
+if [ ! -f "$CONFIG_FILE" ]; then
+  mkdir -p "$(dirname "$CONFIG_FILE")"
+  cp rules.example.json "$CONFIG_FILE"
+  echo "    -> installed $CONFIG_FILE (edit this to set your rules)"
 else
-  echo "    -> existing rules kept at $CONFIG_DIR/rules.json"
+  echo "    -> existing rules kept at $CONFIG_FILE"
 fi
 
 echo ""

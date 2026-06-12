@@ -435,6 +435,7 @@ func usage() {
 
     Usage:
       ProfileLauncher                 run as the default-browser agent (no args)
+      ProfileLauncher --config-path   print the config file the app actually reads
       ProfileLauncher --list-profiles list this machine's Brave profiles
       ProfileLauncher --check         validate rules.json against this machine
       ProfileLauncher --doctor        full health check (default browser, Brave, config, log)
@@ -457,6 +458,12 @@ case .none:
 
 case "--help", "-h":
     usage()
+    exit(0)
+
+case "--config-path":
+    // Print the single path the app will actually read, so scripts seed and
+    // reference the same file the resolver uses (no hardcoded paths).
+    print(configPath)
     exit(0)
 
 case "--list-profiles":
