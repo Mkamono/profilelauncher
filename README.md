@@ -79,8 +79,29 @@ ln -s ~/dotfiles/profilelauncher/rules.json ~/.config/profilelauncher/rules.json
   Profile 2     就活
 ```
 
-`profile` にはディレクトリ名（`Profile 1`）でも表示名（`sub`）でも書けます。
+`profile` にはディレクトリ名（`Profile 1`）でも表示名（`sub`）でも書けます（大文字小文字は区別しません）。
 表示名→ディレクトリの解決は Brave の `Local State` を参照して自動で行われます。
+
+### ルールがその端末で有効か検証する（`--check`）
+
+端末ごとにプロファイル名は異なります。rules.json の各ルールが、その端末に実在する
+プロファイルへ解決できるかを検証できます。`install.sh` の最後でも自動実行されます。
+
+```bash
+/Applications/ProfileLauncher.app/Contents/MacOS/ProfileLauncher --check
+```
+
+```
+Rules:
+  [0] ok  github.com             -> main  (uses Default)
+  [1] ERR example.com            -> 仕事用  (NO SUCH PROFILE here)
+...
+1 reference(s) do not match any profile here.
+```
+
+存在しないプロファイルを指定したルールに一致した URL は、**ジャンクな空プロファイルを作らず**、
+Brave の前面プロファイルで開きます（その旨はログに残ります）。`--check` を直して正しい名前に
+合わせてください。
 
 ## rules.json
 

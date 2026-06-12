@@ -63,29 +63,47 @@ func loadConfig() -> Config {
     }
 }
 
-// MARK: - Profile resolution (display name -> directory name)
+// MARK: - Profile discovery
 
-func resolveProfileDirectory(_ value: String) -> String {
-    // If it's already a directory that exists, use as-is.
-    let dir = (braveSupportDir as NSString).appendingPathComponent(value)
-    if FileManager.default.fileExists(atPath: dir) { return value }
+struct BraveProfile {
+    let directory: String   // e.g. "Profile 1"
+    let name: String        // display name, e.g. "sub"
+}
 
-    // Otherwise try to match a display name in Local State's info_cache.
+// Read all Brave profiles on this machine from Local State (info_cache).
+func allProfiles() -> [BraveProfile] {
     let localState = (braveSupportDir as NSString).appendingPathComponent("Local State")
-    if let data = FileManager.default.contents(atPath: localState),
-       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-       let profile = json["profile"] as? [String: Any],
-       let cache = profile["info_cache"] as? [String: Any] {
-        for (dirName, info) in cache {
-            if let info = info as? [String: Any],
-               let name = info["name"] as? String,
-               name == value {
-                return dirName
-            }
-        }
+    guard let data = FileManager.default.contents(atPath: localState),
+          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let profile = json["profile"] as? [String: Any],
+          let cache = profile["info_cache"] as? [String: Any] else {
+        return []
     }
-    log("Could not resolve profile '\(value)'; passing through to Brave")
-    return value
+    return cache.compactMap { (dir, info) in
+        let name = (info as? [String: Any])?["name"] as? String ?? dir
+        return BraveProfile(directory: dir, name: name)
+    }.sorted { $0.directory < $1.directory }
+}
+
+// MARK: - Profile resolution (rule value -> directory name)
+
+// Resolve a rule's "profile" value to an actual profile directory on this
+// machine. Accepts either a directory name ("Profile 1") or a display name
+// ("sub"), case-insensitively. Returns nil if no such profile exists here.
+func resolveProfileDirectory(_ value: String) -> String? {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    let profiles = allProfiles()
+
+    // Exact directory match.
+    if let p = profiles.first(where: { $0.directory == trimmed }) { return p.directory }
+    // Exact display-name match.
+    if let p = profiles.first(where: { $0.name == trimmed }) { return p.directory }
+    // Case-insensitive fallback (directory then display name).
+    let lower = trimmed.lowercased()
+    if let p = profiles.first(where: { $0.directory.lowercased() == lower }) { return p.directory }
+    if let p = profiles.first(where: { $0.name.lowercased() == lower }) { return p.directory }
+
+    return nil
 }
 
 // MARK: - Become the default browser
@@ -119,26 +137,72 @@ func setAsDefaultBrowser() {
 
 // MARK: - Profile listing (for setting up a new machine)
 
+func pad(_ s: String, _ w: Int) -> String {
+    // Pad by display width (CJK names like "就活" are wide).
+    let width = s.reduce(0) { $0 + ($1.isASCII ? 1 : 2) }
+    return width >= w ? s : s + String(repeating: " ", count: w - width)
+}
+
 func listProfiles() {
     print("Brave profiles on this machine (\(braveSupportDir)):\n")
-    let localState = (braveSupportDir as NSString).appendingPathComponent("Local State")
-    guard let data = FileManager.default.contents(atPath: localState),
-          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          let profile = json["profile"] as? [String: Any],
-          let cache = profile["info_cache"] as? [String: Any] else {
-        print("  (could not read Local State — is Brave installed?)")
+    let profiles = allProfiles()
+    if profiles.isEmpty {
+        print("  (could not read Local State — is Brave installed at the expected path?)")
         return
     }
-    func pad(_ s: String, _ w: Int) -> String {
-        s.count >= w ? s : s + String(repeating: " ", count: w - s.count)
-    }
     print("  " + pad("DIRECTORY", 14) + "DISPLAY NAME")
-    for (dirName, info) in cache.sorted(by: { $0.key < $1.key }) {
-        let name = (info as? [String: Any])?["name"] as? String ?? "?"
-        print("  " + pad(dirName, 14) + name)
+    for p in profiles {
+        print("  " + pad(p.directory, 14) + p.name)
     }
     print("\nIn rules.json you may use either the directory or the display name as \"profile\".")
     print("Config file in use: \(configPath)")
+}
+
+// Validate rules.json against the profiles actually present on this machine.
+func checkConfig() {
+    let config = loadConfig()
+    let profiles = allProfiles()
+    print("Config file: \(configPath)")
+    print("Brave dir:   \(braveSupportDir)\n")
+
+    print("Profiles on this machine:")
+    if profiles.isEmpty {
+        print("  (none found — is Brave installed at the expected path?)")
+    } else {
+        print("  " + pad("DIRECTORY", 14) + "DISPLAY NAME")
+        for p in profiles { print("  " + pad(p.directory, 14) + p.name) }
+    }
+
+    print("\nRules:")
+    if config.rules.isEmpty { print("  (no rules defined)") }
+    var problems = 0
+    for (i, rule) in config.rules.enumerated() {
+        if let dir = resolveProfileDirectory(rule.profile) {
+            print("  [\(i)] ok  \(pad(rule.match, 22)) -> \(rule.profile)  (uses \(dir))")
+        } else {
+            problems += 1
+            print("  [\(i)] ERR \(pad(rule.match, 22)) -> \(rule.profile)  (NO SUCH PROFILE here)")
+        }
+    }
+
+    if let fb = config.fallbackProfile {
+        if let dir = resolveProfileDirectory(fb) {
+            print("\nfallbackProfile: \(fb)  (uses \(dir))")
+        } else {
+            problems += 1
+            print("\nfallbackProfile: \(fb)  (NO SUCH PROFILE here)")
+        }
+    } else {
+        print("\nfallbackProfile: none (unmatched URLs open in Brave's front profile)")
+    }
+
+    print("")
+    if problems == 0 {
+        print("All referenced profiles exist on this machine. ✓")
+    } else {
+        print("\(problems) reference(s) do not match any profile here.")
+        print("Fix the \"profile\" values above to one of the DIRECTORY or DISPLAY NAME values listed.")
+    }
 }
 
 // MARK: - Matching
@@ -174,8 +238,17 @@ func openInBrave(url: URL, config: Config) {
     let bravePath = config.bravePath ?? defaultBravePath
     var args: [String] = []
     if let profileValue = profileFor(url: url, config: config) {
-        let dir = resolveProfileDirectory(profileValue)
-        args.append("--profile-directory=\(dir)")
+        if let dir = resolveProfileDirectory(profileValue) {
+            args.append("--profile-directory=\(dir)")
+        } else {
+            // The configured profile does not exist on this machine. Do NOT pass
+            // it to Brave — that would create a junk empty profile. Fall back to
+            // Brave's current (front) profile and log the valid names.
+            let available = allProfiles()
+                .map { "\($0.directory)=\"\($0.name)\"" }
+                .joined(separator: ", ")
+            log("Profile '\(profileValue)' not found on this machine; opening in Brave's front profile instead. Available: [\(available)]")
+        }
     }
     args.append(url.absoluteString)
 
@@ -219,6 +292,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 // CLI: `ProfileLauncher --list-profiles` shows available Brave profiles on this machine.
 if CommandLine.arguments.dropFirst().contains("--list-profiles") {
     listProfiles()
+    exit(0)
+}
+
+// CLI: `ProfileLauncher --check` validates rules.json against this machine's profiles.
+if CommandLine.arguments.dropFirst().contains("--check") {
+    checkConfig()
     exit(0)
 }
 
