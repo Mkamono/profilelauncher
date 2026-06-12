@@ -100,8 +100,11 @@ ln -s ~/dotfiles/profilelauncher/rules.json ~/.config/profilelauncher/rules.json
 
 よくある原因:
 
+- **config file が FAIL（PARSE ERROR）** … `rules.json` が壊れた JSON。読み込みは
+  ルール0件にフォールバックするため、**全 URL が振り分けられず前面プロファイルで開く**。
+  → JSON を直す（`--check` で再検証）。末尾の `,` や閉じ忘れ、空ファイルが典型。
 - **default browser が FAIL** … リンクは別ブラウザに飛び、本アプリは呼ばれない（ログも増えない）。
-  → `--set-default` を実行するか、システム設定で手動指定。これが「全く動かない」の最頻原因。
+  → `--set-default` を実行するか、システム設定で手動指定。
 - **Brave executable が FAIL** … その端末では Brave が別の場所にある。
   → `rules.json` の `bravePath` をその端末のパスに設定。
 - リンクをクリックしても **recent log が増えない** … やはりデフォルトブラウザになっていない。

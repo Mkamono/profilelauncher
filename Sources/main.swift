@@ -50,15 +50,43 @@ func log(_ msg: String) {
 
 // MARK: - Config loading
 
-func loadConfig() -> Config {
+enum ConfigLoad {
+    case ok(Config)
+    case missing
+    case parseError(String)
+}
+
+// Read and parse the config, distinguishing missing vs malformed so the
+// diagnostics commands can report a malformed file loudly instead of
+// silently degrading to an empty ruleset.
+func readConfig() -> ConfigLoad {
     guard let data = FileManager.default.contents(atPath: configPath) else {
+        return .missing
+    }
+    if data.isEmpty { return .parseError("file is empty") }
+    do {
+        return .ok(try JSONDecoder().decode(Config.self, from: data))
+    } catch let DecodingError.dataCorrupted(ctx) {
+        return .parseError("invalid JSON — \(ctx.debugDescription)")
+    } catch let DecodingError.keyNotFound(key, _) {
+        return .parseError("missing required key \"\(key.stringValue)\"")
+    } catch let DecodingError.typeMismatch(_, ctx) {
+        let path = ctx.codingPath.map { $0.stringValue }.joined(separator: ".")
+        return .parseError("wrong type at \"\(path)\" — \(ctx.debugDescription)")
+    } catch {
+        return .parseError("\(error)")
+    }
+}
+
+func loadConfig() -> Config {
+    switch readConfig() {
+    case .ok(let config):
+        return config
+    case .missing:
         log("No config at \(configPath); using empty ruleset")
         return Config(bravePath: nil, rules: [], fallbackProfile: nil)
-    }
-    do {
-        return try JSONDecoder().decode(Config.self, from: data)
-    } catch {
-        log("Config parse error: \(error). Using empty ruleset.")
+    case .parseError(let msg):
+        log("Config parse error: \(msg). Using empty ruleset — NO URLS WILL BE ROUTED.")
         return Config(bravePath: nil, rules: [], fallbackProfile: nil)
     }
 }
@@ -156,9 +184,19 @@ func doctor() {
         print("         fix: set \"bravePath\" in rules.json to this machine's Brave binary")
     }
 
-    // 3) Config + profiles present?
-    let cfgExists = FileManager.default.fileExists(atPath: configPath)
-    line(cfgExists, "config file", cfgExists ? configPath : "missing: \(configPath)")
+    // 3) Config file present AND valid JSON? A malformed file silently
+    //    degrades to 0 rules, so call it out explicitly.
+    switch readConfig() {
+    case .ok:
+        line(true, "config file", configPath)
+    case .missing:
+        line(false, "config file", "missing: \(configPath)")
+        print("         fix: create it (copy rules.example.json) — see --check / --list-profiles")
+    case .parseError(let msg):
+        line(false, "config file", "\(configPath)\n         PARSE ERROR: \(msg)")
+        print("         => rules.json is not valid JSON, so 0 rules load and nothing is routed.")
+        print("         fix: correct the JSON (run --check after), or recopy rules.example.json")
+    }
     let profiles = allProfiles()
     line(!profiles.isEmpty, "brave profiles",
          profiles.isEmpty ? "none found under \(braveSupportDir) — wrong support dir?"
@@ -225,10 +263,26 @@ func listProfiles() {
 
 // Validate rules.json against the profiles actually present on this machine.
 func checkConfig() {
-    let config = loadConfig()
-    let profiles = allProfiles()
     print("Config file: \(configPath)")
     print("Brave dir:   \(braveSupportDir)\n")
+
+    // Bail out loudly if the file is missing or malformed — otherwise the
+    // report below would misleadingly show "no rules defined".
+    switch readConfig() {
+    case .missing:
+        print("ERROR: config file does not exist.")
+        print("Create it (copy rules.example.json) then re-run --check.")
+        return
+    case .parseError(let msg):
+        print("ERROR: cannot load rules.json — \(msg)")
+        print("Fix the JSON, then re-run --check. (Until fixed, 0 rules load and nothing is routed.)")
+        return
+    case .ok:
+        break
+    }
+
+    let config = loadConfig()
+    let profiles = allProfiles()
 
     print("Profiles on this machine:")
     if profiles.isEmpty {
