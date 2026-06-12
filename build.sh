@@ -30,7 +30,9 @@ echo "==> Installing default rules if none exist"
 # (env var / ~/.config / App Support) instead of guessing — avoids the
 # "edited the wrong file" confusion.
 CONFIG_FILE="$("$APP/Contents/MacOS/$BIN_NAME" --config-path)"
-if [ ! -f "$CONFIG_FILE" ]; then
+# Seed the example when the file is missing OR empty. An empty file is never
+# valid JSON, so leaving it would make --check fail with "file is empty".
+if [ ! -s "$CONFIG_FILE" ]; then
   mkdir -p "$(dirname "$CONFIG_FILE")"
   cp rules.example.json "$CONFIG_FILE"
   echo "    -> installed $CONFIG_FILE (edit this to set your rules)"
