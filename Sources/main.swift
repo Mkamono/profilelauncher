@@ -116,6 +116,71 @@ func currentDefaultBundleID(forScheme scheme: String) -> String? {
     return Bundle(url: appURL)?.bundleIdentifier
 }
 
+// Path of whichever app currently handles http, for human-readable diagnosis.
+func currentDefaultAppPath(forScheme scheme: String) -> String? {
+    guard let url = URL(string: "\(scheme)://example.com") else { return nil }
+    return NSWorkspace.shared.urlForApplication(toOpen: url)?.path
+}
+
+// MARK: - Diagnostics
+
+// One-shot health check for "it works here but not on another machine".
+// Prints PASS/FAIL for each prerequisite so the cause is obvious.
+func doctor() {
+    let myID = Bundle.main.bundleIdentifier ?? "com.local.profilelauncher"
+    func line(_ ok: Bool, _ label: String, _ detail: String) {
+        print("  [\(ok ? "PASS" : "FAIL")] \(label): \(detail)")
+    }
+
+    print("ProfileLauncher doctor\n")
+    print("  app bundle id : \(myID)")
+    print("  app path      : \(Bundle.main.bundlePath)\n")
+
+    // 1) Are we the default browser? This is the #1 reason links don't reach us.
+    let httpID = currentDefaultBundleID(forScheme: "http")
+    let httpsID = currentDefaultBundleID(forScheme: "https")
+    let isDefault = (httpID == myID && httpsID == myID)
+    line(isDefault, "default browser",
+         isDefault ? "ProfileLauncher handles http+https"
+                   : "http=\(httpID ?? "nil") (\(currentDefaultAppPath(forScheme: "http") ?? "?")), https=\(httpsID ?? "nil") — links go HERE, not to ProfileLauncher")
+    if !isDefault {
+        print("         fix: run with --set-default, or System Settings > Desktop & Dock > Default web browser")
+    }
+
+    // 2) Does the configured Brave executable exist on THIS machine?
+    let config = loadConfig()
+    let bravePath = config.bravePath ?? defaultBravePath
+    let braveOK = FileManager.default.isExecutableFile(atPath: bravePath)
+    line(braveOK, "Brave executable", braveOK ? bravePath : "NOT FOUND/!executable: \(bravePath)")
+    if !braveOK {
+        print("         fix: set \"bravePath\" in rules.json to this machine's Brave binary")
+    }
+
+    // 3) Config + profiles present?
+    let cfgExists = FileManager.default.fileExists(atPath: configPath)
+    line(cfgExists, "config file", cfgExists ? configPath : "missing: \(configPath)")
+    let profiles = allProfiles()
+    line(!profiles.isEmpty, "brave profiles",
+         profiles.isEmpty ? "none found under \(braveSupportDir) — wrong support dir?"
+                          : "\(profiles.count) found: " + profiles.map { "\($0.directory)=\"\($0.name)\"" }.joined(separator: ", "))
+    line(!config.rules.isEmpty, "rules", "\(config.rules.count) rule(s)")
+
+    // 4) Recent activity — empty after clicking a link means we are never invoked.
+    print("\n  recent log (\(logPath)):")
+    if let content = try? String(contentsOfFile: logPath, encoding: .utf8) {
+        let lines = content.split(separator: "\n").suffix(8)
+        if lines.isEmpty { print("    (log file is empty)") }
+        for l in lines { print("    \(l)") }
+    } else {
+        print("    (no log yet — the app has not handled any URL)")
+    }
+
+    print("\n  How to test routing:")
+    print("    1) click a link (or run: open https://github.com)")
+    print("    2) run --doctor again; if 'recent log' did not grow, ProfileLauncher")
+    print("       is not the default browser (see the default browser check above).")
+}
+
 func setAsDefaultBrowser() {
     let idString = Bundle.main.bundleIdentifier ?? "com.local.profilelauncher"
     let id = idString as CFString
@@ -292,6 +357,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 // CLI: `ProfileLauncher --list-profiles` shows available Brave profiles on this machine.
 if CommandLine.arguments.dropFirst().contains("--list-profiles") {
     listProfiles()
+    exit(0)
+}
+
+// CLI: `ProfileLauncher --doctor` runs a full health check (default browser, Brave, config, log).
+if CommandLine.arguments.dropFirst().contains("--doctor") {
+    doctor()
     exit(0)
 }
 

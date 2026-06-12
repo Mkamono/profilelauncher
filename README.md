@@ -82,6 +82,30 @@ ln -s ~/dotfiles/profilelauncher/rules.json ~/.config/profilelauncher/rules.json
 `profile` にはディレクトリ名（`Profile 1`）でも表示名（`sub`）でも書けます（大文字小文字は区別しません）。
 表示名→ディレクトリの解決は Brave の `Local State` を参照して自動で行われます。
 
+### 動かないときの一発診断（`--doctor`）
+
+「この端末では動くのに別の端末で動かない」ときは、まずこれを壊れている端末で実行します。
+デフォルトブラウザが自分か／Brave 実体があるか／設定・プロファイル・直近ログをまとめて出します。
+
+```bash
+/Applications/ProfileLauncher.app/Contents/MacOS/ProfileLauncher --doctor
+```
+
+```
+  [PASS] default browser: ProfileLauncher handles http+https
+  [PASS] Brave executable: /Applications/Brave Browser.app/Contents/MacOS/Brave Browser
+  [PASS] brave profiles: 3 found: Default="main", Profile 1="sub", ...
+  ...
+```
+
+よくある原因:
+
+- **default browser が FAIL** … リンクは別ブラウザに飛び、本アプリは呼ばれない（ログも増えない）。
+  → `--set-default` を実行するか、システム設定で手動指定。これが「全く動かない」の最頻原因。
+- **Brave executable が FAIL** … その端末では Brave が別の場所にある。
+  → `rules.json` の `bravePath` をその端末のパスに設定。
+- リンクをクリックしても **recent log が増えない** … やはりデフォルトブラウザになっていない。
+
 ### ルールがその端末で有効か検証する（`--check`）
 
 端末ごとにプロファイル名は異なります。rules.json の各ルールが、その端末に実在する

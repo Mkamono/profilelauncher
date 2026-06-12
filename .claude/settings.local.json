@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./build.sh)",
+      "Bash(/Applications/ProfileLauncher.app/Contents/MacOS/ProfileLauncher --doctor)",
+      "Bash(./ProfileLauncher.app/Contents/MacOS/ProfileLauncher --doctor)"
+    ]
+  }
+}
